@@ -269,9 +269,11 @@ def train_model(training_data, validation_data = "", evaluation_data = "", num_l
             loss.backward()
             optimizer.step()
 
-    fscore, auc = evaluate_model(model, evaluation_data)
-    fscore = round(fscore,3)
-    auc = round(auc,3)
+	#fscore and auc need updating
+	
+#     fscore, auc = evaluate_model(model, evaluation_data)
+#     fscore = round(fscore,3)
+#     auc = round(auc,3)
 
     # save model to path that is alphanumeric and includes number of items and accuracies in filename
     timestamp = re.sub('\.[0-9]*','_',str(datetime.datetime.now())).replace(" ", "_").replace("-", "").replace(":","")
@@ -283,108 +285,109 @@ def train_model(training_data, validation_data = "", evaluation_data = "", num_l
     torch.save(model.state_dict(), model_path)
     return model_path
 
+#NEEDS MODDING
 
-def get_low_conf_unlabeled(model, unlabeled_data, number=80, limit=10000):
-    confidences = []
-    if limit == -1: # we're predicting confidence on *everything* this will take a while
-    	print("Get confidences for unlabeled data (this might take a while)")
-    else:
-    	# only apply the model to a limited number of items
-    	shuffle(unlabeled_data)
-    	unlabeled_data = unlabeled_data[:limit]
+# def get_low_conf_unlabeled(model, unlabeled_data, number=80, limit=10000):
+#     confidences = []
+#     if limit == -1: # we're predicting confidence on *everything* this will take a while
+#     	print("Get confidences for unlabeled data (this might take a while)")
+#     else:
+#     	# only apply the model to a limited number of items
+#     	shuffle(unlabeled_data)
+#     	unlabeled_data = unlabeled_data[:limit]
 
-    with torch.no_grad():
-        for item in unlabeled_data:
-            textid = item[0]
-            if textid in already_labeled:
-                continue
+#     with torch.no_grad():
+#         for item in unlabeled_data:
+#             textid = item[0]
+#             if textid in already_labeled:
+#                 continue
 
-            text = item[1]
+#             text = item[1]
 
-            feature_vector = make_feature_vector(text.split(), feature_index)
-            log_probs = model(feature_vector)
+#             feature_vector = make_feature_vector(text.split(), feature_index)
+#             log_probs = model(feature_vector)
 
-            # get confidence that it is related
-            prob_related = math.exp(log_probs.data.tolist()[0][1])
-            #The threshold set below is probably ultimately too low.
-            if prob_related < 0.5:
-                confidence = 1 - prob_related
-            else:
-                confidence = prob_related
+#             # get confidence that it is related
+#             prob_related = math.exp(log_probs.data.tolist()[0][1])
+#             #The threshold set below is probably ultimately too low.
+#             if prob_related < 0.5:
+#                 confidence = 1 - prob_related
+#             else:
+#                 confidence = prob_related
 
-            item[3] = "low confidence"
-            item[4] = confidence
-            confidences.append(item)
+#             item[3] = "low confidence"
+#             item[4] = confidence
+#             confidences.append(item)
 
-    confidences.sort(key=lambda x: x[4])
-    return confidences[:number:]
-
-
-def get_random_items(unlabeled_data, number = 10):
-    shuffle(unlabeled_data)
-
-    random_items = []
-    for item in unlabeled_data:
-        textid = item[0]
-        if textid in already_labeled:
-            continue
-        random_items.append(item)
-        if len(random_items) >= number:
-            break
-
-    return random_items
+#     confidences.sort(key=lambda x: x[4])
+#     return confidences[:number:]
 
 
-def get_outliers(training_data, unlabeled_data, number=10):
-    """Get outliers from unlabeled data in training data
+# def get_random_items(unlabeled_data, number = 10):
+#     shuffle(unlabeled_data)
 
-    Returns number outliers
+#     random_items = []
+#     for item in unlabeled_data:
+#         textid = item[0]
+#         if textid in already_labeled:
+#             continue
+#         random_items.append(item)
+#         if len(random_items) >= number:
+#             break
 
-    An outlier is defined as the percent of words in an item in
-    unlabeled_data that do not exist in training_data
-    """
-    outliers = []
+#     return random_items
 
-    total_feature_counts = defaultdict(lambda: 0)
 
-    for item in training_data:
-        text = item[1]
-        features = text.split()
+# def get_outliers(training_data, unlabeled_data, number=10):
+#     """Get outliers from unlabeled data in training data
 
-        for feature in features:
-            total_feature_counts[feature] += 1
+#     Returns number outliers
 
-    while(len(outliers) < number):
-        top_outlier = []
-        top_match = float("inf")
+#     An outlier is defined as the percent of words in an item in
+#     unlabeled_data that do not exist in training_data
+#     """
+#     outliers = []
 
-        for item in unlabeled_data:
-            textid = item[0]
-            if textid in already_labeled:
-                continue
+#     total_feature_counts = defaultdict(lambda: 0)
 
-            text = item[1]
-            features = text.split()
-            total_matches = 1 # start at 1 for slight smoothing
-            for feature in features:
-                if feature in total_feature_counts:
-                    total_matches += total_feature_counts[feature]
+#     for item in training_data:
+#         text = item[1]
+#         features = text.split()
 
-            ave_matches = total_matches / len(features)
-            if ave_matches < top_match:
-                top_match = ave_matches
-                top_outlier = item
+#         for feature in features:
+#             total_feature_counts[feature] += 1
 
-        # add this outlier to list and update what is 'labeled',
-        # assuming this new outlier will get a label
-        top_outlier[3] = "outlier"
-        outliers.append(top_outlier)
-        text = top_outlier[1]
-        features = text.split()
-        for feature in features:
-            total_feature_counts[feature] += 1
+#     while(len(outliers) < number):
+#         top_outlier = []
+#         top_match = float("inf")
 
-    return outliers
+#         for item in unlabeled_data:
+#             textid = item[0]
+#             if textid in already_labeled:
+#                 continue
+
+#             text = item[1]
+#             features = text.split()
+#             total_matches = 1 # start at 1 for slight smoothing
+#             for feature in features:
+#                 if feature in total_feature_counts:
+#                     total_matches += total_feature_counts[feature]
+
+#             ave_matches = total_matches / len(features)
+#             if ave_matches < top_match:
+#                 top_match = ave_matches
+#                 top_outlier = item
+
+#         # add this outlier to list and update what is 'labeled',
+#         # assuming this new outlier will get a label
+#         top_outlier[3] = "outlier"
+#         outliers.append(top_outlier)
+#         text = top_outlier[1]
+#         features = text.split()
+#         for feature in features:
+#             total_feature_counts[feature] += 1
+
+#     return outliers
 
 
 #MODEL EVALUATION SECTION NEEDS TO BE MODDED FOR MULTICLASS. F1 AND ROC ARE VALID METRICS, BUT EQUATIONS/LOGIC WOULD NEED TO BE CHANGED.
