@@ -283,299 +283,301 @@ def train_model(training_data, validation_data = "", evaluation_data = "", num_l
     torch.save(model.state_dict(), model_path)
     return model_path
 
+#NEEDS MODDING
+
+# def get_low_conf_unlabeled(model, unlabeled_data, number=80, limit=10000):
+#     confidences = []
+#     if limit == -1: # we're predicting confidence on *everything* this will take a while
+#     	print("Get confidences for unlabeled data (this might take a while)")
+#     else:
+#     	# only apply the model to a limited number of items
+#     	shuffle(unlabeled_data)
+#     	unlabeled_data = unlabeled_data[:limit]
 
-def get_low_conf_unlabeled(model, unlabeled_data, number=80, limit=10000):
-    confidences = []
-    if limit == -1: # we're predicting confidence on *everything* this will take a while
-    	print("Get confidences for unlabeled data (this might take a while)")
-    else:
-    	# only apply the model to a limited number of items
-    	shuffle(unlabeled_data)
-    	unlabeled_data = unlabeled_data[:limit]
+#     with torch.no_grad():
+#         for item in unlabeled_data:
+#             textid = item[0]
+#             if textid in already_labeled:
+#                 continue
 
-    with torch.no_grad():
-        for item in unlabeled_data:
-            textid = item[0]
-            if textid in already_labeled:
-                continue
+#             text = item[1]
 
-            text = item[1]
+#             feature_vector = make_feature_vector(text.split(), feature_index)
+#             log_probs = model(feature_vector)
 
-            feature_vector = make_feature_vector(text.split(), feature_index)
-            log_probs = model(feature_vector)
+#             # get confidence that it is related
+#             prob_related = math.exp(log_probs.data.tolist()[0][1])
+#             #The threshold set below is probably ultimately too low.
+#             if prob_related < 0.5:
+#                 confidence = 1 - prob_related
+#             else:
+#                 confidence = prob_related
 
-            # get confidence that it is related
-            prob_related = math.exp(log_probs.data.tolist()[0][1])
-            #The threshold set below is probably ultimately too low.
-            if prob_related < 0.5:
-                confidence = 1 - prob_related
-            else:
-                confidence = prob_related
+#             item[3] = "low confidence"
+#             item[4] = confidence
+#             confidences.append(item)
 
-            item[3] = "low confidence"
-            item[4] = confidence
-            confidences.append(item)
+#     confidences.sort(key=lambda x: x[4])
+#     return confidences[:number:]
 
-    confidences.sort(key=lambda x: x[4])
-    return confidences[:number:]
+
+# def get_random_items(unlabeled_data, number = 10):
+#     shuffle(unlabeled_data)
 
-
-def get_random_items(unlabeled_data, number = 10):
-    shuffle(unlabeled_data)
-
-    random_items = []
-    for item in unlabeled_data:
-        textid = item[0]
-        if textid in already_labeled:
-            continue
-        random_items.append(item)
-        if len(random_items) >= number:
-            break
-
-    return random_items
-
-
-def get_outliers(training_data, unlabeled_data, number=10):
-    """Get outliers from unlabeled data in training data
-
-    Returns number outliers
-
-    An outlier is defined as the percent of words in an item in
-    unlabeled_data that do not exist in training_data
-    """
-    outliers = []
-
-    total_feature_counts = defaultdict(lambda: 0)
-
-    for item in training_data:
-        text = item[1]
-        features = text.split()
-
-        for feature in features:
-            total_feature_counts[feature] += 1
-
-    while(len(outliers) < number):
-        top_outlier = []
-        top_match = float("inf")
-
-        for item in unlabeled_data:
-            textid = item[0]
-            if textid in already_labeled:
-                continue
-
-            text = item[1]
-            features = text.split()
-            total_matches = 1 # start at 1 for slight smoothing
-            for feature in features:
-                if feature in total_feature_counts:
-                    total_matches += total_feature_counts[feature]
-
-            ave_matches = total_matches / len(features)
-            if ave_matches < top_match:
-                top_match = ave_matches
-                top_outlier = item
-
-        # add this outlier to list and update what is 'labeled',
-        # assuming this new outlier will get a label
-        top_outlier[3] = "outlier"
-        outliers.append(top_outlier)
-        text = top_outlier[1]
-        features = text.split()
-        for feature in features:
-            total_feature_counts[feature] += 1
-
-    return outliers
-
-
-
-def evaluate_model(model, evaluation_data):
-    """Evaluate the model on the held-out evaluation data
-
-    Return the f-value and the AUC for sentiment classification
-    """
-
-    negative_confs = [] # items and their confidence of being positive
-    neutral_confs=[] #  items and their confidence of being neutral
-    positive_confs = [] #  items and their confidence of negative
-
-    true_pos = 0.0 # true positives, etc
-    false_pos = 0.0
-    false_neg = 0.0
-
-    with torch.no_grad():
-        for item in evaluation_data:
-            _, text, label, _, _, = item
-
-            feature_vector = make_feature_vector(text.split(), feature_index)
-            log_probs = model(feature_vector)
-
-            # get confidence that item is disaster-related
-            prob_related = math.exp(log_probs.data.tolist()[0][1])
-
-            if(label == "1"):
-                # positive
-                negative_confs.append(negative_confs)
-                if prob_related > 0.5:
-                    true_pos += 1.0
-                else:
-                    false_neg += 1.0
-
-            elif(label == "2"):
-                # neutral
-                neutral_confs.append(neutral_confs)
-                if prob_related > 0.5:
-                    true_pos += 1.0
-                else:
-                    false_neg += 1.0
-
-            elif(label == "3"):
-                # negative
-                positive_confs.append(positive_confs)
-                if prob_related > 0.5:
-                    true_pos += 1.0
-                else:
-                    false_neg += 1.0
-
-    # Get FScore
-    if true_pos == 0.0:
-        fscore = 0.0
-    else:
-        precision = true_pos / (true_pos + false_pos)
-        recall = true_pos / (true_pos + false_neg)
-        fscore = (2 * precision * recall) / (precision + recall)
-
-    # GET AUC
-    negative_confs.sort()
-    total_greater = 0 # count of how many total have higher confidence
-    for conf in negative_confs:
-        for conf2 in neutral_confs:
-            if conf < conf2:
-                break
-            else:
-                total_greater += 1
-
-
-    denom = len(negative_confs) * len(neutral_confs) * len(positive_confs)
-    auc = total_greater / denom
-
-    return[fscore, auc]
-
-
-
-if evaluation_count <  minimum_evaluation_items:
-    #Keep adding to evaluation data first
-    print("Creating evaluation data:\n")
-
-    shuffle(data)
-    needed = minimum_evaluation_items - evaluation_count
-    data = data[:needed]
-    print(str(needed)+" more annotations needed")
-
-    data = get_annotations(data)
-
-    negative = []
-    neutral=[]
-    positive = []
-
-    for item in data:
-        label = item[2]
-        if label == "1":
-            negative.append(item)
-        elif label =="2":
-            neutral.append(item)
-        elif label == "3":
-            positive.append(item)
-
-    # append evaluation data
-    append_data(evaluation_negative, negative)
-    append_data(evaluation_neutral, neutral)
-    append_data(evaluation_positive, positive)
-
-elif training_count < minimum_training_items:
-    # lets create our first training data!
-    print("Creating initial training data:\n")
-
-    shuffle(data)
-    needed = minimum_training_items - training_count
-    data = data[:needed]
-    print(str(needed)+" more annotations needed")
-
-    data = get_annotations(data)
-
-    negative = []
-    neutral=[]
-    positive= []
-
-    for item in data:
-        label = item[2]
-        if label == "1":
-            negative.append(item)
-        elif label == "2":
-            neutral.append(item)
-        elif label == "3":
-            positive.append(item)
-
-    # append training data
-    append_data(training_negative, negative)
-    append_data(training_neutral, neutral)
-    append_data(training_positive, positive)
-
-else:
-    # lets start Active Learning!!
-
-	# Train new model with current training data
-    vocab_size = create_features()
-    model_path = train_model(training_data, evaluation_data=evaluation_data, vocab_size=vocab_size)
-
-    print("Sampling via Active Learning:\n")
-
-    model = SimpleTextClassifier(3, vocab_size)
-    model.load_state_dict(torch.load(model_path))
-
-	# get 100 items per iteration with the following breakdown of strategies:
-    random_items = get_random_items(data, number=10)
-    print("About to get low confidences.")
-    low_confidences = get_low_conf_unlabeled(model, data, number=80)
-    outliers = get_outliers(training_data+random_items+low_confidences, data, number=10)
-
-    sampled_data = random_items + low_confidences + outliers
-    shuffle(sampled_data)
-
-    sampled_data = get_annotations(sampled_data)
-    negative = []
-    neutral = []
-    positive = []
-    for item in sampled_data:
-        label = item[2]
-        if label == "1":
-            negative.append(item)
-        elif label == "2":
-            neutral.append(item)
-        elif label == "3":
-            positive.append(item)
-
-    # append training data
-    append_data(training_negative, negative)
-    append_data(training_neutral, neutral)
-    append_data(training_positive, positive)
-
-
-if training_count > minimum_training_items:
-    print("\nRetraining model with new data")
-
-	# UPDATE OUR DATA AND (RE)TRAIN MODEL WITH NEWLY ANNOTATED DATA
-    training_data = load_data(training_negative) + load_data(training_neutral) + load_data(training_positive)
-    training_count = len(training_data)
-
-    evaluation_data = load_data(evaluation_negative) + load_data(evaluation_neutral) + load_data(evaluation_positive)
-    evaluation_count = len(evaluation_data)
-
-    vocab_size = create_features()
-    model_path = train_model(training_data, evaluation_data=evaluation_data, vocab_size=vocab_size)
-    model = SimpleTextClassifier(3, vocab_size)
-    model.load_state_dict(torch.load(model_path))
-
-    accuracies = evaluate_model(model, evaluation_data)
-    print("[fscore, auc] =")
-    print(accuracies)
-    print("Model saved to: "+model_path)
+#     random_items = []
+#     for item in unlabeled_data:
+#         textid = item[0]
+#         if textid in already_labeled:
+#             continue
+#         random_items.append(item)
+#         if len(random_items) >= number:
+#             break
+
+#     return random_items
+
+
+# def get_outliers(training_data, unlabeled_data, number=10):
+#     """Get outliers from unlabeled data in training data
+
+#     Returns number outliers
+
+#     An outlier is defined as the percent of words in an item in
+#     unlabeled_data that do not exist in training_data
+#     """
+#     outliers = []
+
+#     total_feature_counts = defaultdict(lambda: 0)
+
+#     for item in training_data:
+#         text = item[1]
+#         features = text.split()
+
+#         for feature in features:
+#             total_feature_counts[feature] += 1
+
+#     while(len(outliers) < number):
+#         top_outlier = []
+#         top_match = float("inf")
+
+#         for item in unlabeled_data:
+#             textid = item[0]
+#             if textid in already_labeled:
+#                 continue
+
+#             text = item[1]
+#             features = text.split()
+#             total_matches = 1 # start at 1 for slight smoothing
+#             for feature in features:
+#                 if feature in total_feature_counts:
+#                     total_matches += total_feature_counts[feature]
+
+#             ave_matches = total_matches / len(features)
+#             if ave_matches < top_match:
+#                 top_match = ave_matches
+#                 top_outlier = item
+
+#         # add this outlier to list and update what is 'labeled',
+#         # assuming this new outlier will get a label
+#         top_outlier[3] = "outlier"
+#         outliers.append(top_outlier)
+#         text = top_outlier[1]
+#         features = text.split()
+#         for feature in features:
+#             total_feature_counts[feature] += 1
+
+#     return outliers
+
+
+#MODEL EVALUATION SECTION NEEDS TO BE MODDED FOR MULTICLASS. F1 AND ROC ARE VALID METRICS, BUT EQUATIONS/LOGIC WOULD NEED TO BE CHANGED.
+
+# def evaluate_model(model, evaluation_data):
+#     """Evaluate the model on the held-out evaluation data
+
+#     Return the f-value and the AUC for sentiment classification
+#     """
+
+#     negative_confs = [] # items and their confidence of being positive
+#     neutral_confs=[] #  items and their confidence of being neutral
+#     positive_confs = [] #  items and their confidence of negative
+
+#     true_pos = 0.0 # true positives, etc
+#     false_pos = 0.0
+#     false_neg = 0.0
+
+#     with torch.no_grad():
+#         for item in evaluation_data:
+#             _, text, label, _, _, = item
+
+#             feature_vector = make_feature_vector(text.split(), feature_index)
+#             log_probs = model(feature_vector)
+
+#             # get confidence that item is disaster-related
+#             prob_related = math.exp(log_probs.data.tolist()[0][1])
+
+#             if(label == "1"):
+#                 # positive
+#                 negative_confs.append(negative_confs)
+#                 if prob_related > 0.5:
+#                     true_pos += 1.0
+#                 else:
+#                     false_neg += 1.0
+
+#             elif(label == "2"):
+#                 # neutral
+#                 neutral_confs.append(neutral_confs)
+#                 if prob_related > 0.5:
+#                     true_pos += 1.0
+#                 else:
+#                     false_neg += 1.0
+
+#             elif(label == "3"):
+#                 # negative
+#                 positive_confs.append(positive_confs)
+#                 if prob_related > 0.5:
+#                     true_pos += 1.0
+#                 else:
+#                     false_neg += 1.0
+
+#     # Get FScore
+#     if true_pos == 0.0:
+#         fscore = 0.0
+#     else:
+#         precision = true_pos / (true_pos + false_pos)
+#         recall = true_pos / (true_pos + false_neg)
+#         fscore = (2 * precision * recall) / (precision + recall)
+
+#     # GET AUC
+#     negative_confs.sort()
+#     total_greater = 0 # count of how many total have higher confidence
+#     for conf in negative_confs:
+#         for conf2 in neutral_confs:
+#             if conf < conf2:
+#                 break
+#             else:
+#                 total_greater += 1
+
+
+#     denom = len(negative_confs) * len(neutral_confs) * len(positive_confs)
+#     auc = total_greater / denom
+
+#     return[fscore, auc]
+
+
+
+# if evaluation_count <  minimum_evaluation_items:
+#     #Keep adding to evaluation data first
+#     print("Creating evaluation data:\n")
+
+#     shuffle(data)
+#     needed = minimum_evaluation_items - evaluation_count
+#     data = data[:needed]
+#     print(str(needed)+" more annotations needed")
+
+#     data = get_annotations(data)
+
+#     negative = []
+#     neutral=[]
+#     positive = []
+
+#     for item in data:
+#         label = item[2]
+#         if label == "1":
+#             negative.append(item)
+#         elif label =="2":
+#             neutral.append(item)
+#         elif label == "3":
+#             positive.append(item)
+
+#     # append evaluation data
+#     append_data(evaluation_negative, negative)
+#     append_data(evaluation_neutral, neutral)
+#     append_data(evaluation_positive, positive)
+
+# elif training_count < minimum_training_items:
+#     # lets create our first training data!
+#     print("Creating initial training data:\n")
+
+#     shuffle(data)
+#     needed = minimum_training_items - training_count
+#     data = data[:needed]
+#     print(str(needed)+" more annotations needed")
+
+#     data = get_annotations(data)
+
+#     negative = []
+#     neutral=[]
+#     positive= []
+
+#     for item in data:
+#         label = item[2]
+#         if label == "1":
+#             negative.append(item)
+#         elif label == "2":
+#             neutral.append(item)
+#         elif label == "3":
+#             positive.append(item)
+
+#     # append training data
+#     append_data(training_negative, negative)
+#     append_data(training_neutral, neutral)
+#     append_data(training_positive, positive)
+
+# else:
+#     # lets start Active Learning!!
+
+# 	# Train new model with current training data
+#     vocab_size = create_features()
+#     model_path = train_model(training_data, evaluation_data=evaluation_data, vocab_size=vocab_size)
+
+#     print("Sampling via Active Learning:\n")
+
+#     model = SimpleTextClassifier(3, vocab_size)
+#     model.load_state_dict(torch.load(model_path))
+
+# 	# get 100 items per iteration with the following breakdown of strategies:
+#     random_items = get_random_items(data, number=10)
+#     print("About to get low confidences.")
+#     low_confidences = get_low_conf_unlabeled(model, data, number=80)
+#     outliers = get_outliers(training_data+random_items+low_confidences, data, number=10)
+
+#     sampled_data = random_items + low_confidences + outliers
+#     shuffle(sampled_data)
+
+#     sampled_data = get_annotations(sampled_data)
+#     negative = []
+#     neutral = []
+#     positive = []
+#     for item in sampled_data:
+#         label = item[2]
+#         if label == "1":
+#             negative.append(item)
+#         elif label == "2":
+#             neutral.append(item)
+#         elif label == "3":
+#             positive.append(item)
+
+#     # append training data
+#     append_data(training_negative, negative)
+#     append_data(training_neutral, neutral)
+#     append_data(training_positive, positive)
+
+
+# if training_count > minimum_training_items:
+#     print("\nRetraining model with new data")
+
+# 	# UPDATE OUR DATA AND (RE)TRAIN MODEL WITH NEWLY ANNOTATED DATA
+#     training_data = load_data(training_negative) + load_data(training_neutral) + load_data(training_positive)
+#     training_count = len(training_data)
+
+#     evaluation_data = load_data(evaluation_negative) + load_data(evaluation_neutral) + load_data(evaluation_positive)
+#     evaluation_count = len(evaluation_data)
+
+#     vocab_size = create_features()
+#     model_path = train_model(training_data, evaluation_data=evaluation_data, vocab_size=vocab_size)
+#     model = SimpleTextClassifier(3, vocab_size)
+#     model.load_state_dict(torch.load(model_path))
+
+#     accuracies = evaluate_model(model, evaluation_data)
+#     print("[fscore, auc] =")
+#     print(accuracies)
+#     print("Model saved to: "+model_path)
